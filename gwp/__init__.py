@@ -9,111 +9,67 @@ __email__ = "johan.carlin@gmail.com"
 __version__ = "0.1.0"
 
 
-class FilterBank(object):
-    sigma: float
-    cyclespersigma: float
-    nsigma: int
-    norient: int
-    phasevalues: list
-    _stride: list
-    _filterbank: np.array
-    _orientations: np.array
-    _filterbank_tensor: []
+def convolver(data, filterbank, stride):
+    """convenience wrapper around tf conv2d. For critical sampling, set stride=sigma*2"""
+    return tf.nn.conv2d(
+        data, filterbank, [1] + [int(np.ceil(stride))] * 2 + [1], "SAME"
+    )
 
-    def __init__(
-        self,
-        sigma,
-        cyclespersigma=.5,
-        nsigma=4,
-        norient=8,
-        phasevalues=[0, np.pi / 2.],
-        stride=[],
-    ):
-        self.sigma = sigma
-        self.cyclespersigma = cyclespersigma
-        self.nsigma = nsigma
-        self.norient = norient
-        self.phasevalues = phasevalues
-        self._stride = stride
-        self._filterbank = np.array([])
-        self._orientations = np.array([])
-        self._filterbank_tensor = []
-        return
 
-    @property
-    def orientations(self):
-        if not self._orientations.size:
-            self._orientations = np.linspace(0., np.pi, self.norient + 1)[:-1]
-        return self._orientations
+def n2orientations(norient):
+    """return an evenly spaced list of norient orientations (in radians)."""
+    return np.linspace(0., np.pi, norient + 1)[:-1]
 
-    @property
-    def filterbank(self):
-        if not self._filterbank.size:
-            self._filterbank = hardstack(
-                [
-                    gaborweights(
-                        frequency=self.cyclespersigma / self.sigma,
-                        theta=direction,
-                        sigma_x=self.sigma,
-                        sigma_y=self.sigma,
-                        offset=phase,
-                        n_stds=self.nsigma,
-                    )
-                    for direction in self.orientations
-                    for phase in self.phasevalues
-                ]
+
+def gaborbank(sigma, orientations=[0], cyclespersigma=.5, nsigma=4, phase=0):
+    """return a 3D array of Gabor filters (vertical * horizontal * orientation)."""
+    return hardstack(
+        [
+            np.real(
+                skimage.filters.gabor_kernel(
+                    frequency=cyclespersigma / sigma,
+                    theta=direction,
+                    sigma_x=sigma,
+                    sigma_y=sigma,
+                    offset=phase,
+                    n_stds=nsigma,
+                )
             )
-        return self._filterbank
-
-    @property
-    def filterbank_tensor(self):
-        # nb tf does not suppport 'if not x' syntax so this is necessary
-        if self._filterbank_tensor is not None:
-            self._filterbank_tensor = tf.convert_to_tensor(
-                self.filterbank, dtype="float32"
-            )
-        return self._filterbank_tensor
-
-    @property
-    def stride(self):
-        if not self._stride:
-            self._stride = [1] + [int(np.ceil(2 * self.sigma))] * 2 + [1]
-        return self._stride
-
-    def responseraw(self, x):
-        return tf.nn.conv2d(x, self.filterbank_tensor, self.stride, "SAME")
-
-    def responsesimple(self, x):
-        resp = self.responseraw(x)
-        return tf.nn.relu(resp)
-
-    def responsecomplex(self, x):
-        resp = tf.pow(self.responseraw(x), 2)
-        # ok so if this was numpy we could just do
-        # respshape = tf.reshape(
-        #    resp,np.array([1,resp.shape[1],resp.shape[2],self.norient,nphase]))
-        # respshape **= 2
-        # finalresp = tf.reduce_sum(respshape,axis=-1)
-        # but because it's tricky to work with tf arrays of unknown length, it's
-        # easier to just sum over each in turn
-        # first phase energy
-
-        nphase = len(self.phasevalues)
-        finalresp = resp[:, :, :, ::nphase]
-        for n in range(nphase - 1):
-            # add on each of the further energies
-            finalresp = finalresp + resp[:, :, :, (n + 1) :: nphase]
-        return tf.sqrt(finalresp)
+            for direction in orientations
+        ]
+    )
 
 
-def gaborweights(*args, **kwargs):
-    """return real part of gabor filter, scaled to approximately [-1 1] range,
-    and thresholded to remove miniscule weights.
-    All input arguments are passed to skimage.filters.gabor_kernel."""
-    k = np.real(skimage.filters.gabor_kernel(*args, **kwargs))
-    k /= np.abs(np.max(k.ravel()))
-    k[np.abs(k) < 0.001] = 0
-    return k.astype("float32")
+def gaussbank(sigma, orientations=[0], cyclespersigma=.5, nsigma=4):
+    """extremely roundabout method to construct 2D Gaussians by generating
+    quadrature-offset Gabors with gaborbank and summing over them (see v1energy). Useful
+    to ensure that the resulting filters are otherwise identical to the output of
+    gaborbank."""
+    phasequad = [
+        gaborbank(
+            sigma,
+            orientations=orientations,
+            cyclespersigma=cyclespersigma,
+            nsigma=nsigma,
+            phase=thisphase,
+        )
+        for thisphase in [0, np.pi / 2]
+    ]
+    return v1energy(*phasequad)
+
+
+def v1energy(*arg):
+    """Adelson & Bergen (1985) style rectification by taking the square root of the sum
+    of squared phase maps. Each input is assumed to be an activation map of identical
+    shape."""
+    result = arg[0] ** 2
+    for thisphase in arg[1:]:
+        result += thisphase ** 2
+    # bit ugly but so far we are actually invariant to backend
+    sqrter = np.sqrt
+    if isinstance(result, tf.Tensor):
+        sqrter = tf.sqrt
+    return sqrter(result)
 
 
 def hardstack(k, grayval=0.):
