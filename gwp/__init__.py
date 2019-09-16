@@ -55,7 +55,10 @@ def gaussbank(sigma, orientations=[0], cyclespersigma=.5, nsigma=4):
         )
         for thisphase in [0, np.pi / 2]
     ]
-    return v1energy(*phasequad)
+    # return only the first 'orientation' channel, since they're all identical after
+    # converting the gabors to gaussians (but keep the dim to ensure interchangability
+    # with gaborbank)
+    return v1energy(*phasequad)[:,:,:,[0]]
 
 
 def v1energy(*arg):
