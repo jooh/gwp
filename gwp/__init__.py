@@ -18,29 +18,37 @@ def convolver(data, filterbank, stride):
 
 def n2orientations(norient):
     """return an evenly spaced list of norient orientations (in radians)."""
-    return np.linspace(0., np.pi, norient + 1)[:-1]
+    return np.linspace(0.0, np.pi, norient + 1)[:-1]
 
 
-def gaborbank(sigma, orientations=[0], cyclespersigma=.5, nsigma=4, phase=0):
+def unit_length(bank, axis=(0, 1)):
+    """set the input array (probably the return from gaborbank) to unit length."""
+    bank /= np.linalg.norm(bank, axis=axis, keepdims=True)
+    return bank
+
+
+def gaborbank(sigma, orientations=[0], cyclespersigma=0.5, nsigma=4, phase=0):
     """return a 3D array of Gabor filters (vertical * horizontal * orientation)."""
-    return hardstack(
-        [
-            np.real(
-                skimage.filters.gabor_kernel(
-                    frequency=cyclespersigma / sigma,
-                    theta=direction,
-                    sigma_x=sigma,
-                    sigma_y=sigma,
-                    offset=phase,
-                    n_stds=nsigma,
+    return unit_length(
+        hardstack(
+            [
+                np.real(
+                    skimage.filters.gabor_kernel(
+                        frequency=cyclespersigma / sigma,
+                        theta=direction,
+                        sigma_x=sigma,
+                        sigma_y=sigma,
+                        offset=phase,
+                        n_stds=nsigma,
+                    )
                 )
-            )
-            for direction in orientations
-        ]
+                for direction in orientations
+            ]
+        )
     )
 
 
-def gaussbank(sigma, orientations=[0], cyclespersigma=.5, nsigma=4):
+def gaussbank(sigma, orientations=[0], cyclespersigma=0.5, nsigma=4):
     """extremely roundabout method to construct 2D Gaussians by generating
     quadrature-offset Gabors with gaborbank and summing over them (see v1energy). Useful
     to ensure that the resulting filters are otherwise identical to the output of
@@ -58,7 +66,7 @@ def gaussbank(sigma, orientations=[0], cyclespersigma=.5, nsigma=4):
     # return only the first 'orientation' channel, since they're all identical after
     # converting the gabors to gaussians (but keep the dim to ensure interchangability
     # with gaborbank)
-    return v1energy(*phasequad)[:,:,:,[0]]
+    return v1energy(*phasequad)[:, :, :, [0]]
 
 
 def v1energy(*arg):
@@ -75,7 +83,7 @@ def v1energy(*arg):
     return sqrter(result)
 
 
-def hardstack(k, grayval=0.):
+def hardstack(k, grayval=0.0):
     dim = np.array([thisk.shape for thisk in k])
     # nb ndim is 1-based so this is actually the index for dim end+2
     stackax = k[0].ndim + 1
