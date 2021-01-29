@@ -22,7 +22,7 @@ typical rectified 'energy' output by summing over squared phase values (Adelson 
 Bergen, 1985).
 
 * Free software: MIT license
-* Documentation: https://gwp.readthedocs.io.
+* Documentation: Sadly neglected, but you can find some tutorial notebooks here_.
 
 
 Features
@@ -37,3 +37,4 @@ This package was created with Cookiecutter_ and the `audreyr/cookiecutter-pypack
 
 .. _Cookiecutter: https://github.com/audreyr/cookiecutter
 .. _`audreyr/cookiecutter-pypackage`: https://github.com/audreyr/cookiecutter-pypackage
+.. _here: https://www.johancarlin.com/tag/gwp.html
