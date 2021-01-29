@@ -6,7 +6,7 @@ import tensorflow as tf
 
 __author__ = """Johan Carlin"""
 __email__ = "johan.carlin@gmail.com"
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 def convolver(data, filterbank, stride):
